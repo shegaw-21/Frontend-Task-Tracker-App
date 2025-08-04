@@ -1,7 +1,11 @@
-module.exports = {
+// D:/TRACKER/frontend/postcss.config.js
+
+// This file configures PostCSS, which Tailwind CSS uses.
+// It needs to use ES Module syntax because package.json has "type": "module".
+
+export default {
     plugins: {
-        // This line is critical for Tailwind CSS to work with PostCSS
-        '@tailwindcss/postcss': {},
+        tailwindcss: {},
         autoprefixer: {},
     },
-}
+};
