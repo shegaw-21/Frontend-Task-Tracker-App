@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import AuthPage from './pages/AuthPage'; // Import the new AuthPage component
 
 // Header Component
 // Manages the visibility of the "About" section via state passed from App.
-function Header({ showAbout, setShowAbout }) {
+function Header({ showAbout, setShowAbout, isLoggedIn, onLogout }) {
     return (
         <header className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 rounded-t-lg shadow-lg">
             <div className="flex items-center justify-between">
@@ -27,6 +28,16 @@ function Header({ showAbout, setShowAbout }) {
                                 About
                             </button>
                         </li>
+                        {isLoggedIn && ( // Show logout only if logged in
+                            <li>
+                                <button
+                                    className="text-white hover:text-blue-200 font-medium transition duration-300"
+                                    onClick={onLogout}
+                                >
+                                    Logout
+                                </button>
+                            </li>
+                        )}
                     </ul>
                 </nav>
             </div>
@@ -320,16 +331,72 @@ const App = () => {
     const [showAbout, setShowAbout] = useState(false); // State for toggling About section
     const [successMessage, setSuccessMessage] = useState(null); // State for displaying success messages
 
+    // Authentication state
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [user, setUser] = useState(null); // Stores user data (id, username, email, full_name)
+    const [token, setToken] = useState(null); // Stores the JWT token
+
     // Base URL for your backend API (Vite handles proxying in development)
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-    // Function to fetch tasks from backend
-    const fetchTasks = async () => {
+    // --- Authentication Handlers ---
+    const handleAuthSuccess = (newToken, userData) => {
+        localStorage.setItem('jwtToken', newToken); // Store token in local storage
+        setIsLoggedIn(true);
+        setUser(userData);
+        setToken(newToken);
+        // After successful login, try to fetch tasks
+        fetchTasks(newToken);
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('jwtToken'); // Remove token from local storage
+        setIsLoggedIn(false);
+        setUser(null);
+        setToken(null);
+        setTasks([]); // Clear tasks on logout
+        setEditingTask(null); // Clear editing state
+        setShowAbout(false); // Go back to home view
+    };
+
+    // Check for token in local storage on component mount
+    useEffect(() => {
+        const storedToken = localStorage.getItem('jwtToken');
+        if (storedToken) {
+            // In a real app, you'd verify this token with the backend.
+            // For simplicity here, we'll just assume it's valid if present.
+            // You might also decode it to get user info if needed.
+            setIsLoggedIn(true);
+            setToken(storedToken);
+            // Attempt to fetch tasks with the stored token
+            fetchTasks(storedToken);
+        } else {
+            setLoading(false); // No token, so not loading tasks, just showing auth page
+        }
+    }, []);
+
+    // Function to fetch tasks from backend (now requires token)
+    const fetchTasks = async (authToken = token) => {
         setLoading(true);
         setError(null); // Clear previous errors
+        if (!authToken) {
+            setError('Not authenticated. Please log in.');
+            setLoading(false);
+            return;
+        }
         try {
-            const response = await fetch(`${API_BASE_URL}/tasks`);
+            const response = await fetch(`${API_BASE_URL}/tasks`, {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`, // Send JWT token
+                },
+            });
             if (!response.ok) {
+                // If token is invalid or expired, force logout
+                if (response.status === 401 || response.status === 403) {
+                    handleLogout();
+                    setError('Session expired or unauthorized. Please log in again.');
+                    return;
+                }
                 const errorText = await response.text();
                 throw new Error(`HTTP error! Status: ${response.status} - ${errorText}`);
             }
@@ -337,25 +404,27 @@ const App = () => {
             setTasks(data);
         } catch (err) {
             console.error("Failed to fetch tasks:", err);
-            setError(`Failed to load tasks: ${err.message}. Please ensure your backend is running.`);
+            setError(`Failed to load tasks: ${err.message}.`);
         } finally {
             setLoading(false);
         }
     };
 
-    // Fetch tasks on component mount
-    useEffect(() => {
-        fetchTasks();
-    }, []);
-
-    // Add a new task via backend
+    // Add a new task via backend (now requires token)
     const addTask = async (task) => {
         setError(null);
         setSuccessMessage(null);
+        if (!token) {
+            setError('Not authenticated. Please log in to add tasks.');
+            return;
+        }
         try {
             const response = await fetch(`${API_BASE_URL}/tasks`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`, // Send JWT token
+                },
                 body: JSON.stringify({
                     title: task.title,
                     description: task.description,
@@ -376,14 +445,21 @@ const App = () => {
         }
     };
 
-    // Update an existing task (title/description/completed) via backend
+    // Update an existing task (title/description/completed) via backend (now requires token)
     const updateTask = async (updatedTask) => {
         setError(null);
         setSuccessMessage(null);
+        if (!token) {
+            setError('Not authenticated. Please log in to update tasks.');
+            return;
+        }
         try {
             const response = await fetch(`${API_BASE_URL}/tasks/${updatedTask.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`, // Send JWT token
+                },
                 body: JSON.stringify({
                     title: updatedTask.title,
                     description: updatedTask.description,
@@ -406,10 +482,14 @@ const App = () => {
         }
     };
 
-    // Update task status (e.g., 'completed', 'todo', 'in-progress') via backend
+    // Update task status (e.g., 'completed', 'todo', 'in-progress') via backend (now requires token)
     const updateTaskStatus = async (id, newStatus) => {
         setError(null);
         setSuccessMessage(null);
+        if (!token) {
+            setError('Not authenticated. Please log in to change task status.');
+            return;
+        }
         const taskToUpdate = tasks.find(t => t.id === id);
         if (!taskToUpdate) {
             setError("Task not found for status update.");
@@ -427,7 +507,10 @@ const App = () => {
         try {
             const response = await fetch(`${API_BASE_URL}/tasks/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`, // Send JWT token
+                },
                 body: JSON.stringify({
                     title: taskToUpdate.title,
                     description: taskToUpdate.description,
@@ -450,12 +533,21 @@ const App = () => {
         }
     };
 
-    // Delete a task via backend
+    // Delete a task via backend (now requires token)
     const deleteTask = async (id) => {
         setError(null);
         setSuccessMessage(null);
+        if (!token) {
+            setError('Not authenticated. Please log in to delete tasks.');
+            return;
+        }
         try {
-            const response = await fetch(`${API_BASE_URL}/tasks/${id}`, { method: 'DELETE' });
+            const response = await fetch(`${API_BASE_URL}/tasks/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`, // Send JWT token
+                },
+            });
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`HTTP error! Status: ${response.status} - ${errorText}`);
@@ -475,50 +567,62 @@ const App = () => {
     return (
         <div className="min-h-screen bg-gray-100 p-4 sm:p-8 font-sans antialiased">
             <div className="max-w-3xl mx-auto bg-gray-50 rounded-lg shadow-xl overflow-hidden">
-                {/* Pass showAbout and setShowAbout to Header */}
-                <Header showAbout={showAbout} setShowAbout={setShowAbout} />
+                <Header showAbout={showAbout} setShowAbout={setShowAbout} isLoggedIn={isLoggedIn} onLogout={handleLogout} />
                 <main className="p-6">
-                    {showAbout ? (
-                        <div className="bg-white rounded-xl shadow-lg p-6 mt-6">
-                            <h2 className="text-2xl font-bold text-gray-800 mb-2">About</h2>
-                            <p>This is a simple Task Tracker app built with React and Tailwind CSS. It connects to a Node.js Express backend and uses MySQL for data persistence. You can add, mark as complete/incomplete, and delete tasks.</p>
-                            <p className="mt-2 text-sm text-gray-600">This application was developed as part of an interactive guide to demonstrate full-stack development principles.</p>
+                    {error && ( // Global error display
+                        <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md text-center font-medium shadow-md">
+                            {error}
                         </div>
+                    )}
+
+                    {!isLoggedIn ? (
+                        // Show authentication page if not logged in
+                        <AuthPage onAuthSuccess={handleAuthSuccess} API_BASE_URL={API_BASE_URL} />
                     ) : (
-                        <>
-                            <TaskForm addTask={addTask}
-                                currentTask={editingTask}
-                                updateTask={updateTask}
-                                setEditingTask={setEditingTask}
-                            />
-                            <h2 className="text-2xl font-semibold text-gray-800 mb-4">Your Tasks</h2>
-
-                            {/* Success and Error messages display */}
-                            {successMessage && (
-                                <div className="mt-4 p-3 bg-green-100 text-green-700 rounded-md text-center font-medium shadow-md">
-                                    {successMessage}
-                                </div>
-                            )}
-                            {error && (
-                                <div className="mt-4 p-3 bg-red-100 text-red-700 rounded-md text-center font-medium shadow-md">
-                                    {error}
-                                </div>
-                            )}
-
-                            {loading ? (
-                                <p className="mt-8 text-center text-indigo-700 text-lg">Loading tasks...</p>
-                            ) : tasks.length === 0 && !error ? (
-                                <p className="text-center text-gray-600 text-lg mt-8 p-4 bg-white rounded-lg shadow-md">
-                                    No tasks yet! Add a new task using the form above.
-                                </p>
-                            ) : (
-                                <TaskList tasks={tasks}
-                                    updateTaskStatus={updateTaskStatus}
-                                    deleteTask={deleteTask}
+                        // Show task tracker if logged in
+                        showAbout ? (
+                            <div className="bg-white rounded-xl shadow-lg p-6 mt-6">
+                                <h2 className="text-2xl font-bold text-gray-800 mb-2">About</h2>
+                                <p>This is a simple Task Tracker app built with React and Tailwind CSS. It connects to a Node.js Express backend and uses MySQL for data persistence. You can add, mark as complete/incomplete, and delete tasks.</p>
+                                <p className="mt-2 text-sm text-gray-600">This application was developed as part of an interactive guide to demonstrate full-stack development principles.</p>
+                                {user && (
+                                    <p className="mt-4 text-sm text-gray-700">
+                                        Logged in as: <span className="font-semibold">{user.username}</span>
+                                        {user.email && ` (${user.email})`}
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <>
+                                <TaskForm addTask={addTask}
+                                    currentTask={editingTask}
+                                    updateTask={updateTask}
                                     setEditingTask={setEditingTask}
                                 />
-                            )}
-                        </>
+                                <h2 className="text-2xl font-semibold text-gray-800 mb-4">Your Tasks</h2>
+
+                                {/* Success messages display */}
+                                {successMessage && (
+                                    <div className="mt-4 p-3 bg-green-100 text-green-700 rounded-md text-center font-medium shadow-md">
+                                        {successMessage}
+                                    </div>
+                                )}
+
+                                {loading ? (
+                                    <p className="mt-8 text-center text-indigo-700 text-lg">Loading tasks...</p>
+                                ) : tasks.length === 0 && !error ? (
+                                    <p className="text-center text-gray-600 text-lg mt-8 p-4 bg-white rounded-lg shadow-md">
+                                        No tasks yet! Add a new task using the form above.
+                                    </p>
+                                ) : (
+                                    <TaskList tasks={tasks}
+                                        updateTaskStatus={updateTaskStatus}
+                                        deleteTask={deleteTask}
+                                        setEditingTask={setEditingTask}
+                                    />
+                                )}
+                            </>
+                        )
                     )}
                 </main>
             </div>
