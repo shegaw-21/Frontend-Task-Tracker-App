@@ -100,7 +100,7 @@ const AuthPage = ({ onAuthSuccess, API_BASE_URL }) => {
                         <>
                             <div>
                                 <label htmlFor="email" className="block text-gray-700 text-sm font-bold mb-2">
-                                    Email (Optional):
+                                    Email :
                                 </label>
                                 <input
                                     type="email"
@@ -113,7 +113,7 @@ const AuthPage = ({ onAuthSuccess, API_BASE_URL }) => {
                             </div>
                             <div>
                                 <label htmlFor="fullName" className="block text-gray-700 text-sm font-bold mb-2">
-                                    Full Name (Optional):
+                                    Full Name :
                                 </label>
                                 <input
                                     type="text"
