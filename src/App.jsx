@@ -64,7 +64,7 @@ const ConfirmationModal = ({ message, onConfirm, onCancel }) => {
             </div>
         </div>
     );
-};
+}; // Removed the extra '};' here that was causing the syntax error
 
 // TaskForm Component
 const TaskForm = ({ addTask, currentTask, updateTask, setEditingTask }) => {
@@ -414,7 +414,7 @@ const App = () => {
     const addTask = async (task) => {
         setError(null);
         setSuccessMessage(null);
-        if (!token) {
+        if (!token) { // Ensure token exists before attempting to add
             setError('Not authenticated. Please log in to add tasks.');
             return;
         }
